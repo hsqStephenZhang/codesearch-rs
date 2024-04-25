@@ -22,15 +22,14 @@ pub fn read_uvarint(b: &[u8]) -> Result<(u64, u64), u64> {
     Err(0)
 }
 
-
 pub fn write_uvarint<W: Write>(writer: &mut W, x: u32) -> io::Result<usize> {
     let mut bytes_written = 0;
     let mut x = x;
     while x >= 0x80 {
-        try!(writer.write(&mut [((x & 0xff) as u8) | 0x80]));
+        writer.write(&mut [((x & 0xff) as u8) | 0x80])?;
         x >>= 7;
         bytes_written += 1;
     }
-    try!(writer.write(&mut [(x & 0xff) as u8]));
+    writer.write(&mut [(x & 0xff) as u8])?;
     Ok(bytes_written + 1)
 }

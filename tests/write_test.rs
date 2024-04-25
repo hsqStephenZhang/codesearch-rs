@@ -7,15 +7,13 @@ mod common;
 
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::ops::DerefMut;
 use std::num::Wrapping;
+use std::ops::DerefMut;
 use std::u32;
 
 use self::tempfile::NamedTempFile;
 
-
 use common::build_flush_index;
-
 
 fn trivial_files() -> BTreeMap<&'static str, &'static str> {
     let mut d = BTreeMap::new();
@@ -47,87 +45,89 @@ fn trivial_index() -> Vec<u8> {
 
     // list of posting lists
     s.extend("\na\n".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![2])); // file1
+    s.extend_from_slice(&file_list(vec![2])); // file1
     s.extend("\nab".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![3, 5])); // file3, thefile2
+    s.extend_from_slice(&file_list(vec![3, 5])); // file3, thefile2
     s.extend("\nda".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![0])); // afile4
+    s.extend_from_slice(&file_list(vec![0])); // afile4
     s.extend("\nxy".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![4])); // file5
+    s.extend_from_slice(&file_list(vec![4])); // file5
     s.extend("ab\n".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![5])); // thefile2
+    s.extend_from_slice(&file_list(vec![5])); // thefile2
     s.extend("abc".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![0, 3])); // afile4, file3
+    s.extend_from_slice(&file_list(vec![0, 3])); // afile4, file3
     s.extend("bc\n".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![0, 3])); // afile4, file3
+    s.extend_from_slice(&file_list(vec![0, 3])); // afile4, file3
     s.extend("dab".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![0])); // afile4
+    s.extend_from_slice(&file_list(vec![0])); // afile4
     s.extend("xyz".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![4])); // file5
+    s.extend_from_slice(&file_list(vec![4])); // file5
     s.extend("yzw".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![4])); // file5
+    s.extend_from_slice(&file_list(vec![4])); // file5
     s.extend("zw\n".as_bytes());
-    s.extend_from_slice(&mut file_list(vec![4])); // file5
+    s.extend_from_slice(&file_list(vec![4])); // file5
     s.push(0xff);
     s.push(0xff);
     s.push(0xff);
-    s.extend_from_slice(&mut file_list(vec![]));
+    s.extend_from_slice(&file_list(vec![]));
 
     // name index
-    s.extend_from_slice(&mut u32_to_vec(0));
-    s.extend_from_slice(&mut u32_to_vec(6 + 1));
-    s.extend_from_slice(&mut u32_to_vec(6 + 1 + 2 + 1));
-    s.extend_from_slice(&mut u32_to_vec(6 + 1 + 2 + 1 + 5 + 1));
-    s.extend_from_slice(&mut u32_to_vec(6 + 1 + 2 + 1 + 5 + 1 + 5 + 1));
-    s.extend_from_slice(&mut u32_to_vec(6 + 1 + 2 + 1 + 5 + 1 + 5 + 1 + 5 + 1));
-    s.extend_from_slice(&mut u32_to_vec(6 + 1 + 2 + 1 + 5 + 1 + 5 + 1 + 5 + 1 + 8 + 1));
+    s.extend_from_slice(&u32_to_vec(0));
+    s.extend_from_slice(&u32_to_vec(6 + 1));
+    s.extend_from_slice(&u32_to_vec(6 + 1 + 2 + 1));
+    s.extend_from_slice(&u32_to_vec(6 + 1 + 2 + 1 + 5 + 1));
+    s.extend_from_slice(&u32_to_vec(6 + 1 + 2 + 1 + 5 + 1 + 5 + 1));
+    s.extend_from_slice(&u32_to_vec(6 + 1 + 2 + 1 + 5 + 1 + 5 + 1 + 5 + 1));
+    s.extend_from_slice(&u32_to_vec(
+        6 + 1 + 2 + 1 + 5 + 1 + 5 + 1 + 5 + 1 + 8 + 1,
+    ));
 
     // posting list index,
     s.extend("\na\n".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(0));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(0));
     s.extend("\nab".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(2));
-    s.extend_from_slice(&mut u32_to_vec(5));
+    s.extend_from_slice(&u32_to_vec(2));
+    s.extend_from_slice(&u32_to_vec(5));
     s.extend("\nda".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(5 + 6));
     s.extend("\nxy".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5));
     s.extend("ab\n".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5));
     s.extend("abc".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(2));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5 + 5));
+    s.extend_from_slice(&u32_to_vec(2));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5 + 5));
     s.extend("bc\n".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(2));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5 + 5 + 6));
+    s.extend_from_slice(&u32_to_vec(2));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5 + 5 + 6));
     s.extend("dab".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6));
     s.extend("xyz".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5));
     s.extend("yzw".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5 + 5));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5 + 5));
     s.extend("zw\n".as_bytes());
-    s.extend_from_slice(&mut u32_to_vec(1));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5 + 5 + 5));
+    s.extend_from_slice(&u32_to_vec(1));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5 + 5 + 5));
     s.push(0xff);
     s.push(0xff);
     s.push(0xff);
     s.extend(u32_to_vec(0));
-    s.extend_from_slice(&mut u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5 + 5 + 5 + 5));
+    s.extend_from_slice(&u32_to_vec(5 + 6 + 5 + 5 + 5 + 6 + 6 + 5 + 5 + 5 + 5));
 
     // trailer
-    s.extend_from_slice(&mut u32_to_vec(16));
-    s.extend_from_slice(&mut u32_to_vec(16 + 1));
-    s.extend_from_slice(&mut u32_to_vec(16 + 1 + 38));
-    s.extend_from_slice(&mut u32_to_vec(16 + 1 + 38 + 62));
-    s.extend_from_slice(&mut u32_to_vec(16 + 1 + 38 + 62 + 28));
+    s.extend_from_slice(&u32_to_vec(16));
+    s.extend_from_slice(&u32_to_vec(16 + 1));
+    s.extend_from_slice(&u32_to_vec(16 + 1 + 38));
+    s.extend_from_slice(&u32_to_vec(16 + 1 + 38 + 62));
+    s.extend_from_slice(&u32_to_vec(16 + 1 + 38 + 62 + 28));
 
     s.extend_from_slice("\ncsearch trailr\n".as_bytes());
 
@@ -185,11 +185,13 @@ fn test_write(do_flush: bool) {
         while i < data.len() && i < want.len() && data[i] == want[i] {
             i += 1;
         }
-        panic!("wrong index:\nhave {:?} {:?}\nwant {:?} {:?}\ncommon bytes: {}",
-               &data[..i],
-               &data[i..],
-               &want[..i],
-               &want[i..],
-               i);
+        panic!(
+            "wrong index:\nhave {:?} {:?}\nwant {:?} {:?}\ncommon bytes: {}",
+            &data[..i],
+            &data[i..],
+            &want[..i],
+            &want[i..],
+            i
+        );
     }
 }

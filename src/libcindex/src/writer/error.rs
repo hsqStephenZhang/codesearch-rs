@@ -2,7 +2,6 @@ use std::error::{self, Error};
 use std::fmt;
 use std::io;
 
-
 /// The Error type for indexing operations.
 ///
 /// Errors can come from std::io::Error, or
@@ -10,7 +9,7 @@ use std::io;
 #[derive(Debug)]
 pub struct IndexError {
     kind: IndexErrorKind,
-    error: Box<error::Error + Send + Sync>,
+    error: Box<dyn error::Error + Send + Sync>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +31,6 @@ pub enum IndexErrorKind {
     HighInvalidUtf8Ratio,
 }
 
-
 impl IndexError {
     /// Creates a new IndexError. Works the same as std::io::Error.
     ///
@@ -50,7 +48,8 @@ impl IndexError {
     /// }
     /// ```
     pub fn new<E>(kind: IndexErrorKind, error: E) -> IndexError
-        where E: Into<Box<error::Error + Send + Sync>>
+    where
+        E: Into<Box<dyn error::Error + Send + Sync>>,
     {
         IndexError {
             kind: kind,
@@ -72,7 +71,6 @@ impl From<io::Error> for IndexError {
     }
 }
 
-
 impl From<IndexError> for io::Error {
     fn from(e: IndexError) -> Self {
         match e.kind() {
@@ -82,26 +80,13 @@ impl From<IndexError> for io::Error {
     }
 }
 
-impl Error for IndexError {
-    fn description(&self) -> &str {
-        match self.kind {
-            IndexErrorKind::IoError(_) => self.error.description(),
-            IndexErrorKind::FileNameError => "filename conversion error",
-            IndexErrorKind::FileTooLong => "file too long",
-            IndexErrorKind::LineTooLong => "line too long",
-            IndexErrorKind::TooManyTrigrams => "too many trigrams in file",
-            IndexErrorKind::BinaryDataPresent => "binary file",
-            IndexErrorKind::HighInvalidUtf8Ratio => "Too many invalid utf-8 sequences",
-        }
-    }
-}
+impl Error for IndexError {}
 
 impl fmt::Display for IndexError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         self.error.fmt(fmt)
     }
 }
-
 
 /// A specialized result type for Index operations.
 ///

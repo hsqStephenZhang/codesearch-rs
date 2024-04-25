@@ -7,28 +7,28 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
-use std::fs::File;
-use std::path::Path;
-use std::io::{self, BufWriter, Read, Write};
 use std::ffi::OsString;
+use std::fs::File;
+use std::io::{self, BufWriter, Read, Write};
 use std::mem;
+use std::path::Path;
 
-use libvarint;
-use tempfile::tempfile;
 use byteorder::{BigEndian, WriteBytesExt};
 use libprofiling;
+use libvarint;
+use tempfile::tempfile;
 
 use consts::{MAGIC, TRAILER_MAGIC};
 
-use super::sparseset::SparseSet;
 use super::error::{IndexError, IndexErrorKind, IndexResult};
-use super::{WriteTrigram, copy_file, get_offset};
-use super::postinglist::{to_diffs, TakeWhilePeek};
 use super::postentry::PostEntry;
 use super::postheap::PostHeap;
-use super::trigramiter::TrigramReader;
+use super::postinglist::{to_diffs, TakeWhilePeek};
 use super::sort_post::sort_post;
+use super::sparseset::SparseSet;
+use super::trigramiter::TrigramReader;
 use super::NPOST;
+use super::{copy_file, get_offset, WriteTrigram};
 
 // Index writing.  See read.rs for details of on-disk format.
 //
@@ -50,7 +50,6 @@ const MAX_FILE_LEN: u64 = 1 << 30;
 const MAX_TEXT_TRIGRAMS: u64 = 30000;
 const MAX_INVALID_UTF8_RATION: f64 = 0.1;
 const MAX_LINE_LEN: u64 = 2000;
-
 
 pub struct IndexWriter {
     /// Max number of allowed trigrams in a file
@@ -90,21 +89,21 @@ impl IndexWriter {
     /// ```
     pub fn new<P: AsRef<Path>>(filename: P) -> io::Result<IndexWriter> {
         let _frame = libprofiling::profile("IndexWriter::new");
-        let f = try!(File::create(filename));
+        let f = File::create(filename)?;
         Ok(IndexWriter {
             max_trigram_count: MAX_TEXT_TRIGRAMS,
             max_utf8_invalid: MAX_INVALID_UTF8_RATION,
             max_file_len: MAX_FILE_LEN,
             max_line_len: MAX_LINE_LEN,
             paths: Vec::new(),
-            name_data: try!(make_temp_buf()),
-            name_index: try!(make_temp_buf()),
+            name_data: make_temp_buf()?,
+            name_index: make_temp_buf()?,
             trigram: SparseSet::new(),
             number_of_names_written: 0,
             bytes_written: 0,
             post: Vec::with_capacity(NPOST),
             post_files: Vec::new(),
-            post_index: try!(make_temp_buf()),
+            post_index: make_temp_buf()?,
             index: BufWriter::with_capacity(256 << 10, f),
         })
     }
@@ -127,8 +126,8 @@ impl IndexWriter {
     /// ```
     pub fn add_file<P: AsRef<Path>>(&mut self, filename: P) -> IndexResult<()> {
         let _frame = libprofiling::profile("IndexWriter::add_file");
-        let f = try!(File::open(filename.as_ref()));
-        let metadata = try!(f.metadata());
+        let f = File::open(filename.as_ref())?;
+        let metadata = f.metadata()?;
         self.add(filename, f, metadata.len())
     }
 
@@ -137,15 +136,16 @@ impl IndexWriter {
     /// `filename` is the name of the opened file referred to by `f`.
     /// `size` is the size of the file referred to by `f`.
     pub fn add<P, R>(&mut self, filename: P, f: R, size: u64) -> IndexResult<()>
-        where P: AsRef<Path>,
-              R: Read
+    where
+        P: AsRef<Path>,
+        R: Read,
     {
         let _frame = libprofiling::profile("IndexWriter::add");
         if size > self.max_file_len {
-            return Err(IndexError::new(IndexErrorKind::FileTooLong,
-                                       format!("file too long, ignoring ({} > {})",
-                                               size,
-                                               self.max_file_len)));
+            return Err(IndexError::new(
+                IndexErrorKind::FileTooLong,
+                format!("file too long, ignoring ({} > {})", size, self.max_file_len),
+            ));
         }
         self.trigram.clear();
         let max_utf8_invalid = ((size as f64) * self.max_utf8_invalid) as u64;
@@ -160,16 +160,19 @@ impl IndexWriter {
             }
         }
         if (self.trigram.len() as u64) > self.max_trigram_count {
-            return Err(IndexError::new(IndexErrorKind::TooManyTrigrams,
-                                       format!("Too many trigrams ({} > {})",
-                                               self.trigram.len(),
-                                               self.max_trigram_count)));
-
+            return Err(IndexError::new(
+                IndexErrorKind::TooManyTrigrams,
+                format!(
+                    "Too many trigrams ({} > {})",
+                    self.trigram.len(),
+                    self.max_trigram_count
+                ),
+            ));
         }
         debug!("{} {} {:?}", size, self.trigram.len(), filename.as_ref());
         self.bytes_written += size as usize;
 
-        let file_id = try!(self.add_name(filename));
+        let file_id = self.add_name(filename)?;
         let v = self.trigram.take_dense();
         self.push_trigrams_to_post(file_id, v)
     }
@@ -180,7 +183,7 @@ impl IndexWriter {
         let _frame = libprofiling::profile("IndexWriter::push_trigrams_to_post");
         for each_trigram in trigrams {
             if self.post.len() >= NPOST {
-                try!(self.flush_post());
+                self.flush_post()?;
             }
             self.post.push(PostEntry::new(each_trigram, file_id));
         }
@@ -190,15 +193,15 @@ impl IndexWriter {
     /// Add `filename` to the nameData section of the index
     fn add_name<P: AsRef<Path>>(&mut self, filename: P) -> IndexResult<u32> {
         let _frame = libprofiling::profile("IndexWriter::add_name");
-        let offset = try!(get_offset(&mut self.name_data));
-        try!(self.name_index.write_u32::<BigEndian>(offset as u32));
+        let offset = get_offset(&mut self.name_data)?;
+        self.name_index.write_u32::<BigEndian>(offset as u32)?;
 
-        let s = try!(filename.as_ref()
-                             .to_str()
-                             .ok_or(IndexError::new(IndexErrorKind::FileNameError,
-                                                    "UTF-8 Conversion error")));
-        try!(self.name_data.write(s.as_bytes()));
-        try!(self.name_data.write_u8(0));
+        let s = filename.as_ref().to_str().ok_or(IndexError::new(
+            IndexErrorKind::FileNameError,
+            "UTF-8 Conversion error",
+        ))?;
+        self.name_data.write(s.as_bytes())?;
+        self.name_data.write_u8(0)?;
 
         let id = self.number_of_names_written;
         self.number_of_names_written += 1;
@@ -208,44 +211,46 @@ impl IndexWriter {
     /// Finalize the index, collecting all data and writing it out.
     pub fn flush(mut self) -> IndexResult<()> {
         let _frame = libprofiling::profile("IndexWriter::flush");
-        try!(self.add_name(""));
-        try!(self.index.write(MAGIC.as_bytes()));
+        self.add_name("")?;
+        self.index.write(MAGIC.as_bytes())?;
 
         let mut off = [0; 5];
-        off[0] = try!(get_offset(&mut self.index));
+        off[0] = get_offset(&mut self.index)?;
 
         for p in &self.paths {
-            let path_as_bytes = try!(p.to_str()
-                                      .map(str::as_bytes)
-                                      .ok_or(IndexError::new(IndexErrorKind::FileNameError,
-                                                             "UTF-8 Conversion error")));
-            try!(self.index.write(path_as_bytes));
-            try!(self.index.write_u8(0));
+            let path_as_bytes = p.to_str().map(str::as_bytes).ok_or(IndexError::new(
+                IndexErrorKind::FileNameError,
+                "UTF-8 Conversion error"
+            ))?;
+            self.index.write(path_as_bytes)?;
+            self.index.write_u8(0)?;
         }
-        try!(self.index.write_u8(0));
-        off[1] = try!(get_offset(&mut self.index));
+        self.index.write_u8(0)?;
+        off[1] = get_offset(&mut self.index)?;
 
-        try!(self.name_data.flush());
+        self.name_data.flush()?;
         copy_file(&mut self.index, &mut self.name_data.get_mut());
-        off[2] = try!(get_offset(&mut self.index));
+        off[2] = get_offset(&mut self.index)?;
 
-        try!(self.merge_post());
-        off[3] = try!(get_offset(&mut self.index));
+        self.merge_post()?;
+        off[3] = get_offset(&mut self.index)?;
 
-        try!(self.name_index.flush());
+        self.name_index.flush()?;
         copy_file(&mut self.index, &mut self.name_index.get_mut());
-        off[4] = try!(get_offset(&mut self.index));
+        off[4] = get_offset(&mut self.index)?;
 
-        try!(self.post_index.flush());
+        self.post_index.flush()?;
         copy_file(&mut self.index, &mut self.post_index.get_mut());
 
         for v in off.iter() {
-            try!(self.index.write_u32::<BigEndian>(*v as u32));
+            self.index.write_u32::<BigEndian>(*v as u32)?;
         }
-        try!(self.index.write(TRAILER_MAGIC.as_bytes()));
-        info!("{} data bytes, {} index bytes",
-              self.bytes_written,
-              try!(get_offset(&mut self.index)));
+        self.index.write(TRAILER_MAGIC.as_bytes())?;
+        info!(
+            "{} data bytes, {} index bytes",
+            self.bytes_written,
+            get_offset(&mut self.index)?
+        );
         Ok(())
     }
     /// Merge the posting lists together
@@ -263,38 +268,43 @@ impl IndexWriter {
         heap.add_mem(v);
 
         let mut h = heap.into_iter().peekable();
-        let offset0 = try!(get_offset(&mut self.index));
+        let offset0 = get_offset(&mut self.index)?;
 
-        let _frame_write = libprofiling::profile("IndexWriter::merge_post: Generate/Write post \
-                                                  index");
+        let _frame_write = libprofiling::profile(
+            "IndexWriter::merge_post: Generate/Write post \
+                                                  index",
+        );
         while let Some(plist) = TakeWhilePeek::new(&mut h) {
-            let _fname_write_to_index = libprofiling::profile("IndexWriter::merge_post: Write \
-                                                               post index");
-            let offset = try!(get_offset(&mut self.index)) - offset0;
+            let _fname_write_to_index = libprofiling::profile(
+                "IndexWriter::merge_post: Write \
+                                                               post index",
+            );
+            let offset = get_offset(&mut self.index)? - offset0;
 
             // posting list
             let plist_trigram = plist.trigram();
-            try!(self.index.write_trigram(plist_trigram));
+            self.index.write_trigram(plist_trigram)?;
             let mut written = 0;
             let _fname_diffs = libprofiling::profile("IndexWriter::merge_post: Write file diffs");
             for each_file in to_diffs(plist.map(|p| p.file_id())) {
-                try!(libvarint::write_uvarint(&mut self.index, each_file));
+                libvarint::write_uvarint(&mut self.index, each_file)?;
                 written += 1;
             }
+            #[allow(dropping_copy_types)]
             drop(_fname_diffs);
 
             let _fname_diffs = libprofiling::profile("IndexWriter::merge_post: Write file diffs");
-            try!(self.post_index.write_trigram(plist_trigram));
-            try!(self.post_index.write_u32::<BigEndian>(written - 1));
-            try!(self.post_index.write_u32::<BigEndian>(offset as u32));
+            self.post_index.write_trigram(plist_trigram)?;
+            self.post_index.write_u32::<BigEndian>(written - 1)?;
+            self.post_index.write_u32::<BigEndian>(offset as u32)?;
         }
         // NOTE: write last entry like how the go version works
-        let offset = try!(get_offset(&mut self.index)) - offset0;
-        try!(self.index.write_trigram(0xffffff));           // END trigram
-        try!(libvarint::write_uvarint(&mut self.index, 0));    // NUL byte for END postlist
-        try!(self.post_index.write_trigram(0xffffff));      // END trigram
-        try!(self.post_index.write_u32::<BigEndian>(0));    // nothing written
-        try!(self.post_index.write_u32::<BigEndian>(offset as u32));
+        let offset = get_offset(&mut self.index)? - offset0;
+        self.index.write_trigram(0xffffff)?; // END trigram
+        libvarint::write_uvarint(&mut self.index, 0)?; // NUL byte for END postlist
+        self.post_index.write_trigram(0xffffff)?; // END trigram
+        self.post_index.write_u32::<BigEndian>(0)?; // nothing written
+        self.post_index.write_u32::<BigEndian>(offset as u32)?;
 
         Ok(())
     }
@@ -311,6 +321,6 @@ impl IndexWriter {
 }
 
 fn make_temp_buf() -> io::Result<BufWriter<File>> {
-    let w = try!(tempfile());
+    let w = tempfile()?;
     Ok(BufWriter::with_capacity(256 << 10, w))
 }
